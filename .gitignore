@@ -1,19 +1,21 @@
 # macOS
 .DS_Store
 
-# Editors
-.idea/
-.vscode/
-*.swp
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
 
-# Logs
+# 本仓库的构建产物 / 样例文件
+.build/
+
+# 日志
 *.log
 
-# Env
+# 依赖
+node_modules/
+
+# 环境变量
 .env
 .env.local
-
-# Dependencies / build output
-node_modules/
-dist/
-build/
