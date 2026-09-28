@@ -42,6 +42,52 @@ macOS 上用来快速翻看图片和视频的小工具，SwiftUI 原生实现。
 .build/DerivedData/Build/Products/Debug/MediaViewer.app/Contents/MacOS/MediaViewer ~/Pictures
 ```
 
+## 打包分发
+
+```bash
+./scripts/package.sh
+```
+
+产物在 `.build/dist/`（版本号取自工程里的 `MARKETING_VERSION`）：
+
+| 文件 | 用途 |
+| --- | --- |
+| `MediaViewer-1.0.dmg` | 标准安装包：打开后把 App 拖进 Applications |
+| `MediaViewer-1.0.pkg` | 双击安装，自动装到 `/Applications`（适合批量部署 / MDM） |
+| `MediaViewer-1.0.zip` | 解压即用，适合挂 GitHub Release |
+
+脚本流程：Release **通用二进制**（arm64 + x86_64）→ 校验签名 → 打出三种包 → **逐个验证包里的 App 真的能跑**（用 App 自带的 `--dump-state` 打开 `docs/`，断言加载到 1 个文件且首个是 `screenshot.png`；DMG 还检查 `Applications` 链接和 `codesign --verify --strict`）→ 打印 SHA-256。
+
+实测产物（本机）：
+
+```
+540K  MediaViewer-1.0.dmg   checksum VALID
+476K  MediaViewer-1.0.pkg   载荷 21 个条目
+476K  MediaViewer-1.0.zip
+```
+
+### 签名与公证
+
+默认是 **ad-hoc 签名**（`codesign` 显示 `Signature=adhoc`），因为这台机器上没有任何开发者证书（`security find-identity -v -p codesigning` 为 0 valid identities）。于是：
+
+- 本机可以直接运行；
+- 拷到别的 Mac 会被 Gatekeeper 拦（“无法验证开发者”）。对方可以右键 App 选「打开」，或者执行 `xattr -dr com.apple.quarantine /Applications/MediaViewer.app`。
+
+要出正式分发包，需要 Apple 开发者账号里的 **Developer ID Application** 证书：
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE="notary" \
+./scripts/package.sh
+```
+
+`NOTARY_PROFILE` 是 `xcrun notarytool store-credentials` 存好的 keychain profile，给了它脚本就会在打包后提交公证。
+
+### 打包时的两个坑
+
+- 不用 `hdiutil create -srcfolder`：它内部要先挂载一个临时镜像，在沙箱 / CI 这类受限环境里会以 `目录非空` 失败。改成 `makehybrid`（直接构建 HFS+ 文件系统，不挂载）→ 在可写镜像里清掉 `makehybrid` 附带的 `com.apple.FinderInfo`（不清的话 `codesign --strict` 会报 `resource fork, Finder information, or similar detritus not allowed`）→ 压成只读 UDZO。
+- `pkgutil --expand-full` 的目标目录必须不存在，否则直接失败。
+
 ## 快捷键
 
 | 操作 | 快捷键 |
@@ -79,7 +125,7 @@ MediaViewer/
 Tools/
   MetadataProbe/                命令行探针：跑同一份扫描/元数据实现
   WindowProbe/                  窗口信息与截图像素统计（UI 冒烟用）
-scripts/                        构建、运行、验证脚本
+scripts/                        构建、运行、打包、验证脚本
 docs/screenshot.png             README 截图
 ```
 
@@ -90,6 +136,7 @@ docs/screenshot.png             README 截图
 ```bash
 ./scripts/verify-metadata.sh    # 数据链路
 ./scripts/ui-smoke.sh           # 界面链路（需要「屏幕录制」权限）
+./scripts/package.sh            # 打 DMG / PKG / ZIP 安装包
 ```
 
 **1. 元数据链路（`verify-metadata.sh`）**
