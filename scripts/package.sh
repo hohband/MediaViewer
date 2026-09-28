@@ -3,6 +3,8 @@
 #
 #   ./scripts/package.sh
 #
+# 产物输出到 dist/（已 gitignore），中间文件都放在 .build/package-check/。
+#
 # 默认 ad-hoc 签名（本机可用）。有 Apple 开发者账号时可以这样出正式分发包：
 #   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE="notary" ./scripts/package.sh
 #   其中 NOTARY_PROFILE 是 `xcrun notarytool store-credentials` 存好的 keychain profile 名。
@@ -12,7 +14,8 @@ cd "$(dirname "$0")/.."
 APP_NAME="MediaViewer"
 BUNDLE_ID="com.hohband.MediaViewer"
 DERIVED_DATA=".build/DerivedData"
-DIST=".build/dist"
+DIST="dist"
+WORK=".build/package-check"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
@@ -21,8 +24,8 @@ CHECK_FOLDER="$PWD/docs"
 
 fail() {
   echo "❌ $*" >&2
-  hdiutil detach "$DIST/rw-mnt" > /dev/null 2>&1 || true
-  hdiutil detach "$DIST/mnt" > /dev/null 2>&1 || true
+  hdiutil detach "$WORK/rw-mnt" > /dev/null 2>&1 || true
+  hdiutil detach "$WORK/mnt" > /dev/null 2>&1 || true
   pkill -f "MacOS/$APP_NAME" > /dev/null 2>&1 || true
   exit 1
 }
@@ -39,8 +42,8 @@ BUILD="$(build_setting CURRENT_PROJECT_VERSION)"
 [ -n "$VERSION" ] || fail "读不到 MARKETING_VERSION"
 
 echo "== 打包 $APP_NAME $VERSION ($BUILD)，签名标识: $SIGN_IDENTITY =="
-rm -rf "$DIST"
-mkdir -p "$DIST"
+rm -rf "$DIST" "$WORK"
+mkdir -p "$DIST" "$WORK"
 
 echo
 echo "== 1/5 Release 通用二进制构建（arm64 + x86_64）=="
@@ -80,8 +83,7 @@ echo "  ${ZIP}（$(du -h "$ZIP" | cut -f1)）"
 
 echo
 echo "== 4/5 DMG =="
-STAGE="$DIST/dmg-stage"
-rm -rf "$STAGE"
+STAGE="$WORK/dmg-stage"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
@@ -89,8 +91,8 @@ ln -s /Applications "$STAGE/Applications"
 # 这里用 makehybrid + convert，而不是 `hdiutil create -srcfolder`：
 # 后者内部要先挂载一个临时镜像，在沙箱/CI 这类受限环境里会以 "目录非空" 失败。
 # makehybrid 直接构建文件系统，不挂载，行为在哪儿都一样。
-RAW_DMG="$DIST/$APP_NAME-$VERSION-raw.dmg"
-RW_DMG="$DIST/$APP_NAME-$VERSION-rw.dmg"
+RAW_DMG="$WORK/$APP_NAME-$VERSION-raw.dmg"
+RW_DMG="$WORK/$APP_NAME-$VERSION-rw.dmg"
 hdiutil makehybrid -hfs -hfs-volume-name "$APP_NAME $VERSION" -o "$RAW_DMG" "$STAGE" > /dev/null 2>&1 \
   || fail "makehybrid 生成 DMG 失败"
 
@@ -99,7 +101,7 @@ hdiutil makehybrid -hfs -hfs-volume-name "$APP_NAME $VERSION" -o "$RAW_DMG" "$ST
 # 所以再走一遍可写镜像，把扩展属性清掉，最后压成只读 UDZO。
 hdiutil convert "$RAW_DMG" -format UDRW -ov -o "$RW_DMG" > /dev/null 2>&1 \
   || fail "转换为可写镜像失败"
-RW_MOUNT="$DIST/rw-mnt"
+RW_MOUNT="$WORK/rw-mnt"
 hdiutil detach "$RW_MOUNT" > /dev/null 2>&1 || true
 rm -rf "$RW_MOUNT"
 mkdir -p "$RW_MOUNT"
@@ -110,7 +112,6 @@ hdiutil detach "$RW_MOUNT" > /dev/null || fail "卸载可写镜像失败"
 hdiutil convert "$RW_DMG" -format UDZO -ov -o "$DMG" > /dev/null 2>&1 \
   || fail "压缩 DMG 失败"
 rm -f "$RAW_DMG" "$RW_DMG"
-rm -rf "$STAGE"
 hdiutil verify "$DMG" > /dev/null || fail "DMG 校验失败"
 if [ "$SIGN_IDENTITY" != "-" ]; then
   codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
@@ -119,7 +120,7 @@ echo "  ${DMG}（$(du -h "$DMG" | cut -f1)）"
 
 echo
 echo "== 5/5 PKG =="
-PKG_ROOT="$DIST/pkg-root"
+PKG_ROOT="$WORK/pkg-root"
 mkdir -p "$PKG_ROOT/Applications"
 cp -R "$APP" "$PKG_ROOT/Applications/"
 pkgbuild \
@@ -128,7 +129,6 @@ pkgbuild \
   --version "$VERSION" \
   --install-location / \
   "$PKG" > /dev/null
-rm -rf "$PKG_ROOT"
 echo "  ${PKG}（$(du -h "$PKG" | cut -f1)）"
 echo "  载荷条目数: $(pkgutil --payload-files "$PKG" | wc -l | tr -d ' ')"
 pkgutil --payload-files "$PKG" | grep -q "Applications/$APP_NAME.app/Contents/MacOS/$APP_NAME" \
@@ -147,7 +147,7 @@ echo "== 验证：包里的 App 能不能跑 =="
 verify_app() {
   local binary="$1"
   local label="$2"
-  local state="$DIST/state-$label.txt"
+  local state="$WORK/state-$label.txt"
   rm -f "$state"
   "$binary" --dump-state "$state" "$CHECK_FOLDER" > /dev/null 2>&1 || true
   [ -f "$state" ] || fail "$label: App 没能写出状态文件（跑不起来？）"
@@ -157,26 +157,26 @@ verify_app() {
 }
 
 # ZIP
-UNZIP_DIR="$DIST/unzip"
+UNZIP_DIR="$WORK/unzip"
+rm -rf "$UNZIP_DIR"
 mkdir -p "$UNZIP_DIR"
 ditto -x -k "$ZIP" "$UNZIP_DIR"
 verify_app "$UNZIP_DIR/$APP_NAME.app/Contents/MacOS/$APP_NAME" "zip"
 
 # DMG：挂载后检查签名、拖拽用的 Applications 链接，再直接跑里面的 App
-MOUNT_POINT="$DIST/mnt"
+MOUNT_POINT="$WORK/mnt"
 hdiutil detach "$MOUNT_POINT" > /dev/null 2>&1 || true
 rm -rf "$MOUNT_POINT"
 mkdir -p "$MOUNT_POINT"
-hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_POINT" > /dev/null
+hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_POINT" > /dev/null || fail "挂载 DMG 失败"
 [ -L "$MOUNT_POINT/Applications" ] || fail "DMG 里缺少 Applications 链接"
 codesign --verify --strict "$MOUNT_POINT/$APP_NAME.app" 2>&1 | sed 's/^/    /' || fail "DMG 里的 App 签名校验失败"
 echo "  ✅ dmg: Applications 链接在，App 签名有效"
 verify_app "$MOUNT_POINT/$APP_NAME.app/Contents/MacOS/$APP_NAME" "dmg"
 hdiutil detach "$MOUNT_POINT" > /dev/null
 
-# PKG：展开载荷，直接跑里面的 App
-# 注意：pkgutil --expand-full 的目标目录必须不存在，否则会失败。
-EXPAND_DIR="$DIST/pkg-expand"
+# PKG：展开载荷，直接跑里面的 App（目标目录必须不存在，否则 pkgutil 会失败）
+EXPAND_DIR="$WORK/pkg-expand"
 rm -rf "$EXPAND_DIR"
 pkgutil --expand-full "$PKG" "$EXPAND_DIR" > /dev/null 2>&1 || fail "PKG 展开失败"
 PKG_BINARY="$(find "$EXPAND_DIR" -path "*$APP_NAME.app/Contents/MacOS/$APP_NAME" -type f | head -1)"

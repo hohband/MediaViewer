@@ -48,7 +48,7 @@ macOS 上用来快速翻看图片和视频的小工具，SwiftUI 原生实现。
 ./scripts/package.sh
 ```
 
-产物在 `.build/dist/`（版本号取自工程里的 `MARKETING_VERSION`）：
+产物在 `dist/`（已 gitignore；版本号取自工程里的 `MARKETING_VERSION`）：
 
 | 文件 | 用途 |
 | --- | --- |
