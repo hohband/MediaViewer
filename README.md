@@ -11,6 +11,7 @@ macOS 上用来快速翻看图片和视频的小工具，SwiftUI 原生实现。
    - 视频：AVKit 播放器，自带播放/暂停、进度条、逐帧、全屏、画中画；打开时停在开头并渲染首帧。
 2. **同文件夹内上/下一个导航**
    - 打开文件夹后按**文件名自然排序**（`img-2` 排在 `img-10` 前面），只列出图片和视频，忽略隐藏文件和子目录。
+   - 单独打开一个文件（`⌘O` 选文件、命令行传路径、Finder「打开方式」）时，会打开它所在的文件夹并直接选中它，接着就能上下翻看同目录的其他素材。
    - 工具栏的 `‹` `›` 按钮、菜单「浏览」、快捷键 `⌘←` / `⌘→` 都可以翻看；底部状态栏显示 `第几个 / 共几个`。
 3. **查看元数据**
    - 右侧面板（`⌘I` 显示/隐藏）分组展示：
@@ -29,18 +30,50 @@ macOS 上用来快速翻看图片和视频的小工具，SwiftUI 原生实现。
 # 命令行构建（产物在 .build/DerivedData/Build/Products/Debug/MediaViewer.app）
 ./scripts/build.sh              # 或 ./scripts/build.sh Release
 
-# 构建并启动，可以带一个要打开的文件夹
+# 构建并启动，可以带一个要打开的文件夹或媒体文件
 ./scripts/run.sh
 ./scripts/run.sh ~/Pictures
+./scripts/run.sh ~/Pictures/DSC_0001.NEF
 ```
 
 也可以直接用 Xcode 打开 `MediaViewer.xcodeproj` 后 Run（scheme 已经共享）。
 
-命令行启动时支持把文件夹作为参数传入，方便脚本和自动化测试：
+命令行启动时支持把文件夹或单个媒体文件作为参数传入，方便脚本和自动化测试：
 
 ```bash
 .build/DerivedData/Build/Products/Debug/MediaViewer.app/Contents/MacOS/MediaViewer ~/Pictures
+.build/DerivedData/Build/Products/Debug/MediaViewer.app/Contents/MacOS/MediaViewer ~/Pictures/DSC_0001.NEF
 ```
+
+## 在 Finder 里打开（右键「打开方式」）
+
+App 在 [Config/Info.plist](Config/Info.plist) 里用 `CFBundleDocumentTypes` 声明了自己能处理的媒体类型（UTI），
+装好并运行过一次之后：
+
+- 右键任意图片 / 视频 →「打开方式」里有 **MediaViewer**；
+- 「显示简介 → 打开方式」可以把它设成某类文件的默认程序；声明里用 `LSHandlerRank = Alternate`，所以它只当备选，不会抢「预览」「QuickTime Player」的位置；
+- 双击（设成默认之后）、拖到 Dock 图标、`open -a MediaViewer <文件>` 都会以 LaunchServices 的「打开文稿」事件进入 App：打开文件所在文件夹并选中该文件；
+- `MediaViewer --dump-state <输出文件> <文件夹或文件>` 可以不开窗口地验证这条链路。
+
+注册信息由 LaunchServices 扫描 App 得到，**换新版本或换位置后要让它重新扫一遍**：
+
+```bash
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister
+
+# 覆盖安装到 /Applications 之后
+"$LSREGISTER" -f /Applications/MediaViewer.app
+
+# 把某个旧拷贝（比如直接从 DMG 里运行过的那份）从注册表里删掉，否则它可能赢过新拷贝
+"$LSREGISTER" -u "/Volumes/MediaViewer 1.0/MediaViewer.app"
+```
+
+`xcodebuild` 每次构建完会自动对本地产物跑一次 `lsregister -f -trusted`，所以直接跑 `.build/DerivedData/Build/Products/Debug/MediaViewer.app` 时就已经注册好了。
+想用命令行改默认程序可以装 [duti](https://github.com/jwalton/duti)：`duti -s com.hohband.MediaViewer public.jpeg all`。
+
+`./scripts/verify-handler.sh` 为了验证会临时注册 `.build` 里的构建产物；跑完如果发现 `/Applications/MediaViewer.app` 存在，就把注册指回安装版（构建产物从注册表里移除），避免同一个 bundle id 的两份拷贝打架。
+
+声明里列的类型（`LSItemContentTypes`）要和 [MediaItem.swift](MediaViewer/Models/MediaItem.swift) 的扩展名白名单一起改，
+否则会出现「右键菜单里有 MediaViewer，打开却说格式不支持」。
 
 ## 打包分发
 
@@ -56,14 +89,14 @@ macOS 上用来快速翻看图片和视频的小工具，SwiftUI 原生实现。
 | `MediaViewer-1.0.pkg` | 双击安装，自动装到 `/Applications`（适合批量部署 / MDM） |
 | `MediaViewer-1.0.zip` | 解压即用，适合挂 GitHub Release |
 
-脚本流程：Release **通用二进制**（arm64 + x86_64）→ 校验签名 → 打出三种包 → **逐个验证包里的 App 真的能跑**（用 App 自带的 `--dump-state` 打开 `docs/`，断言加载到 1 个文件且首个是 `screenshot.png`；DMG 还检查 `Applications` 链接和 `codesign --verify --strict`）→ 打印 SHA-256。
+脚本流程：Release **通用二进制**（arm64 + x86_64）→ 校验签名 → 检查 `Info.plist` 里确实有给 Finder 用的文稿类型声明 → 打出三种包 → **逐个验证包里的 App 真的能跑**（用 App 自带的 `--dump-state` 打开只放了一张图的临时文件夹，断言加载到 1 个文件且就是 `screenshot.png`；DMG 还检查 `Applications` 链接和 `codesign --verify --strict`）→ 打印 SHA-256。
 
 实测产物（本机）：
 
 ```
-540K  MediaViewer-1.0.dmg   checksum VALID
-476K  MediaViewer-1.0.pkg   载荷 21 个条目
-476K  MediaViewer-1.0.zip
+1.2M  MediaViewer-1.0.dmg   checksum VALID
+1.1M  MediaViewer-1.0.pkg   载荷 25 个条目
+1.1M  MediaViewer-1.0.zip
 ```
 
 ### 签名与公证
@@ -119,7 +152,7 @@ python3 Tools/IconGen/make_icon.py --variant a --install  # 换变体（A/B/C，
 
 | 操作 | 快捷键 |
 | --- | --- |
-| 打开文件夹 | `⌘O` |
+| 打开文件 / 文件夹 | `⌘O` |
 | 上一个 / 下一个 | `⌘←` / `⌘→` |
 | 重新载入当前文件夹 | `⌘R` |
 | 显示 / 隐藏元数据面板 | `⌘I` |
@@ -131,21 +164,23 @@ python3 Tools/IconGen/make_icon.py --variant a --install  # 换变体（A/B/C，
 - 图片：`jpg` `jpeg` `png` `gif` `heic` `heif` `tif` `tiff` `bmp` `webp` `avif` `jp2`，以及常见 RAW（`dng` `cr2` `cr3` `nef` `arw` `orf` `raf` `rw2` `srw` `pef`）。
 - 视频：`mov` `qt` `mp4` `m4v` `avi` `mpg` `mpeg` `mpe` `m2v` `ts` `m2ts` `mts` `3gp` `3g2` `dv`。
 
-解码走系统能力（图片 ImageIO、视频 AVFoundation），所以能播的就是系统能播的；遇到系统不支持的容器或编码，播放器会给出明确提示而不是静默黑屏。要增删格式，改 [MediaItem.swift](MediaViewer/Models/MediaItem.swift) 里的两个扩展名集合即可。
+解码走系统能力（图片 ImageIO、视频 AVFoundation），所以能播的就是系统能播的；遇到系统不支持的容器或编码，播放器会给出明确提示而不是静默黑屏。要增删格式，改 [MediaItem.swift](MediaViewer/Models/MediaItem.swift) 里的两个扩展名集合即可；同时记得同步 [Config/Info.plist](Config/Info.plist) 里给 Finder 用的 UTI 列表（见上文「在 Finder 里打开」）。
 
 ## 目录结构
 
 ```
 MediaViewer.xcodeproj/          手写的 Xcode 工程（objectVersion 77 + 文件系统同步分组）
+Config/Info.plist               只放 CFBundleDocumentTypes：声明 Finder / LaunchServices 用的文稿类型
 MediaViewer/
-  MediaViewerApp.swift          入口、菜单命令
+  MediaViewerApp.swift          入口、菜单命令、LaunchServices 打开事件的 AppDelegate
   Models/MediaItem.swift        媒体类型与支持的扩展名
   Services/
     MediaScanner.swift          文件夹扫描 + 自然排序（纯逻辑）
-    MediaLibrary.swift          当前文件夹 / 当前选中项 / 上一个下一个
+    MediaLibrary.swift          当前文件夹 / 当前选中项 / 上一个下一个 / 打开文件或文件夹
     MetadataReader.swift        ImageIO + AVFoundation 读元数据
     MetadataFormat.swift        数值展示格式化
     MetadataModels.swift        元数据分组模型
+    OpenRequests.swift          Finder「打开方式」请求的队列
     MediaViewerDiagnostics.swift --dump-state 诊断入口
   Views/                        预览区、缩放图片、视频播放器、元数据面板、空状态
   Assets.xcassets               应用图标（AppIcon.appiconset 由脚本生成）
@@ -153,6 +188,7 @@ Tools/
   IconGen/                      图标生成脚本：图标即代码（Pillow + numpy）
   MetadataProbe/                命令行探针：跑同一份扫描/元数据实现
   WindowProbe/                  窗口信息与截图像素统计（UI 冒烟用）
+  HandlerProbe/                 查询系统认为能打开某文件的 App（处理程序验证用）
 scripts/                        构建、运行、打包、验证脚本
 docs/screenshot.png             README 截图
 docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明暗背景
@@ -160,11 +196,12 @@ docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明
 
 ## 验证
 
-仓库里有两套可重复运行的验证，`./scripts/verify.sh` 一次跑完：
+仓库里有三套可重复运行的验证，`./scripts/verify.sh` 一次跑完：
 
 ```bash
 ./scripts/verify-metadata.sh    # 数据链路
 ./scripts/ui-smoke.sh           # 界面链路（需要「屏幕录制」权限）
+./scripts/verify-handler.sh     # Finder「打开方式」链路
 ./scripts/package.sh            # 打 DMG / PKG / ZIP 安装包
 ```
 
@@ -192,6 +229,22 @@ docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明
 
 `ui-smoke.sh` 需要给终端「屏幕录制」权限；没有权限时脚本会明确报错退出，不会假装通过。
 
+**3. Finder 处理程序链路（`verify-handler.sh`）**
+
+不靠人工点右键，直接问 LaunchServices 要答案：
+
+- 构建产物的 `Contents/Info.plist` 里确实有 `CFBundleDocumentTypes`，且包含 `public.jpeg` / `public.png` / `public.heic` / `com.apple.quicktime-movie` / `public.mpeg-4`；
+- `lsregister -f` 之后，用 `Tools/HandlerProbe`（`NSWorkspace.urlsForApplications(toOpen:)`）确认这些类型**候选 App 列表里有本 App**——这正是 Finder 右键菜单的数据来源；
+- 最后真的用 LaunchServices 打开 `img-1.jpg` / `vid-1.mp4`（等价于双击 / 右键「打开方式」），断言窗口标题变成对应文件名。
+
+实测输出：
+
+```
+✅ img-1.jpg：候选里有 MediaViewer（系统默认：/System/Applications/Preview.app）
+✅ vid-1.mp4：候选里有 MediaViewer（系统默认：/System/Applications/QuickTime Player.app）
+✅ .build/samples/img-1.jpg → 窗口标题 img-1.jpg
+```
+
 **还没有自动覆盖的部分**：鼠标点击工具栏按钮、菜单项、拖拽打开、键盘翻页这些交互，以及缩放到某个具体比例后的像素结果。仓库暂时没有 XCTest target——核心逻辑用命令行探针覆盖，UI 用截图覆盖。
 
 ## 实现说明与取舍
@@ -199,9 +252,12 @@ docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明
 - **不用 `@Observable`，用 `ObservableObject`**：`@Observable` 依赖 Swift 宏插件（`swift-plugin-server`），在受限的构建环境里会直接失败。`ObservableObject` 没有这个问题，行为一致。
 - **视频不用 SwiftUI 的 `VideoPlayer`**：它只链接 `_AVKit_SwiftUI` 这个 overlay，在 macOS 26 上运行时会因为找不到 AVKit 的 `AVPlayerView` 类而 `failed to demangle superclass of VideoPlayerView` 并 abort。现在的做法是自己用 `NSViewRepresentable` 包一层 `AVPlayerView`，并在工程里显式链接 `AVKit.framework`。
 - **没有开启 App Sandbox**：这样可以打开任意目录、读取任意文件。代价是不能上架 Mac App Store；要上架需要打开沙盒并改用安全作用域书签（security-scoped bookmarks）保存目录授权。
+- **Info.plist 只写一半**：文稿类型（`CFBundleDocumentTypes`）没法用 `INFOPLIST_KEY_*` 表达（数组键不支持），所以留了一份手写的 [Config/Info.plist](Config/Info.plist)，和 Xcode 的 `GENERATE_INFOPLIST_FILE` 在构建时合并。它特意放在 `MediaViewer/` 之外——那个目录是 `PBXFileSystemSynchronizedRootGroup`，放在里面的 `Info.plist` 会被当成资源再拷一份进 `Contents/Resources/`。
+- **`LSHandlerRank = Alternate` + `CFBundleTypeRole = Viewer`**：本 App 只读不写，所以不抢「预览」「QuickTime Player」的默认位置，只在右键「打开方式」里当备选；`verify-handler.sh` 会把系统当前的默认程序一起打印出来（断言的是「候选里有 MediaViewer」，不是「抢到了默认」）。
+- **打开事件用 AppDelegate 而不是只靠 `.onOpenURL`**：SwiftUI 的 `.onOpenURL` 在「App 没运行 + 双击文件」这条路径上不保证收到，`NSApplicationDelegate.application(_:open:)` 更可靠；两者都汇到 `OpenRequests` 队列，界面起来再取走。
 - **Swift 5 语言模式**：工程 `SWIFT_VERSION = 5.0`，避免严格并发检查在 SwiftUI + AVFoundation 组合上产生大量噪音。
 - **元数据不依赖外部工具**：不需要 exiftool/ffprobe，全部走系统框架，App 分发时没有额外依赖（脚本里的 ffmpeg/ffprobe 只用于生成和交叉验证样例）。
-- **手写 pbxproj**：工程文件是手写的（`objectVersion = 77` + `PBXFileSystemSynchronizedRootGroup`），所以 `MediaViewer/` 目录下新增 Swift 文件会自动进入 target，不需要改工程文件。
+- **手写 pbxproj**：工程文件是手写的（`objectVersion = 77` + `PBXFileSystemSynchronizedRootGroup`），所以 `MediaViewer/` 目录下新增 Swift 文件会自动进入 target，不需要改工程文件（`Config/` 不在同步范围内，改动它要显式写进工程）。
 
 ## 可能想接着做的
 
@@ -209,7 +265,8 @@ docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明
 - 记住上次打开的文件夹、按拍摄时间排序、收藏与评分；
 - 图片旋转、裁剪、导出；
 - Live Photo 与 RAW 的更好支持；
-- 给「最近打开」和文件拖拽加上处理。
+- 给「最近打开」和文件拖拽加上处理；
+- 「设为默认打开程序」的一键菜单项（自己在 `LSItemContentTypes` 里挑类型调 `LSSetDefaultRoleHandlerForContentType`）。
 
 ## 仓库
 

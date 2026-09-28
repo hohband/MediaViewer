@@ -59,14 +59,43 @@ final class MediaLibrary: ObservableObject {
         }
     }
 
-    /// 如果 `url` 是一个目录就打开它；返回是否打开成功。
+    /// 打开任意路径：目录当成素材文件夹，文件则打开它所在的文件夹并选中它。
+    ///
+    /// 这是对外的统一入口：打开面板、命令行参数、Finder「打开方式」都走这里。
+    /// 返回是否打开成功（路径不存在，或文件格式不在 `MediaFormats` 里时为 false）。
     @discardableResult
-    func loadIfDirectory(_ url: URL) -> Bool {
+    func open(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             return false
         }
-        load(folder: url)
+        if isDirectory.boolValue {
+            load(folder: url)
+            return true
+        }
+        return load(file: url)
+    }
+
+    /// 打开单个媒体文件：扫描它所在的文件夹，并把它选为当前项。
+    @discardableResult
+    func load(file url: URL) -> Bool {
+        guard MediaFormats.kind(for: url) != nil else {
+            // 右键「打开方式」里选了 MediaViewer，但格式不在支持列表里：
+            // 给出明确提示，而不是留一个空窗口。
+            folderURL = nil
+            items = []
+            currentIndex = nil
+            let ext = url.pathExtension
+            message = ext.isEmpty
+                ? "「\(url.lastPathComponent)」不是可预览的图片或视频。"
+                : "暂不支持 .\(ext.lowercased()) 格式。"
+            return false
+        }
+
+        load(folder: url.deletingLastPathComponent())
+        if let index = items.firstIndex(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
+            currentIndex = index
+        }
         return true
     }
 
@@ -80,17 +109,17 @@ final class MediaLibrary: ObservableObject {
         self.currentIndex = currentIndex + 1
     }
 
-    /// 弹出系统文件夹选择面板。
+    /// 弹出系统打开面板：可以选文件夹，也可以直接选一个或多个媒体文件。
     func presentOpenPanel() {
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
+        panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
         panel.prompt = "打开"
-        panel.message = "选择包含图片或视频的文件夹"
+        panel.message = "选择图片 / 视频，或包含它们的文件夹"
         if panel.runModal() == .OK, let url = panel.url {
-            load(folder: url)
+            open(url)
         }
     }
 }

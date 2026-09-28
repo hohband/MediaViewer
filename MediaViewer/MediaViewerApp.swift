@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct MediaViewerApp: App {
+    /// 接住 Finder / LaunchServices 的「用 MediaViewer 打开」事件（见 OpenRequests.swift）。
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var library = MediaLibrary()
 
     init() {
@@ -16,7 +18,7 @@ struct MediaViewerApp: App {
         .defaultSize(width: 1120, height: 720)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("打开文件夹…") {
+                Button("打开…") {
                     library.presentOpenPanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)

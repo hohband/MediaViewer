@@ -19,8 +19,8 @@ WORK=".build/package-check"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
-# 验证用的文件夹：docs/ 里有一张 screenshot.png，App 打开它会加载 1 个文件。
-CHECK_FOLDER="$PWD/docs"
+# 验证用的文件夹：只放 docs/screenshot.png 一张图，扫描结果才好断言。
+CHECK_FOLDER="$WORK/fixture"
 
 fail() {
   echo "❌ $*" >&2
@@ -43,7 +43,8 @@ BUILD="$(build_setting CURRENT_PROJECT_VERSION)"
 
 echo "== 打包 $APP_NAME $VERSION ($BUILD)，签名标识: $SIGN_IDENTITY =="
 rm -rf "$DIST" "$WORK"
-mkdir -p "$DIST" "$WORK"
+mkdir -p "$DIST" "$WORK" "$CHECK_FOLDER"
+cp docs/screenshot.png "$CHECK_FOLDER/"
 
 echo
 echo "== 1/5 Release 通用二进制构建（arm64 + x86_64）=="
@@ -65,6 +66,14 @@ echo "== 2/5 检查产物 =="
 echo "  架构: $(lipo -archs "$APP/Contents/MacOS/$APP_NAME")"
 codesign --verify --deep --strict --verbose=1 "$APP" 2>&1 | sed 's/^/  /' || fail "签名校验失败"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|TeamIdentifier" | sed 's/^/  /' || true
+
+# 没有 CFBundleDocumentTypes 的话，安装后 Finder 右键「打开方式」里不会有本 App。
+DOC_IMAGES="$(plutil -extract CFBundleDocumentTypes.0.LSItemContentTypes xml1 -o - "$APP/Contents/Info.plist" 2>/dev/null)" \
+  || fail "Info.plist 缺少 CFBundleDocumentTypes（检查 Config/Info.plist 与 INFOPLIST_FILE）"
+DOC_MOVIES="$(plutil -extract CFBundleDocumentTypes.1.LSItemContentTypes xml1 -o - "$APP/Contents/Info.plist" 2>/dev/null)" \
+  || fail "Info.plist 里缺视频类型的文稿声明"
+printf '%s' "$DOC_IMAGES" | grep -q '<string>public.jpeg</string>' || fail "文稿类型里没有 public.jpeg"
+echo "  文稿类型: 图片 $(printf '%s' "$DOC_IMAGES" | grep -c '<string>') 种 UTI，视频 $(printf '%s' "$DOC_MOVIES" | grep -c '<string>') 种 UTI"
 
 if [ "$SIGN_IDENTITY" != "-" ]; then
   echo "  用 $SIGN_IDENTITY 重新签名（hardened runtime）"
@@ -151,7 +160,7 @@ verify_app() {
   rm -f "$state"
   "$binary" --dump-state "$state" "$CHECK_FOLDER" > /dev/null 2>&1 || true
   [ -f "$state" ] || fail "$label: App 没能写出状态文件（跑不起来？）"
-  grep -q "count=1" "$state" || fail "$label: 打开 docs/ 应该加载到 1 个文件，实际: $(grep count= "$state")"
+  grep -q "count=1" "$state" || fail "$label: 打开验证文件夹应该加载到 1 个文件，实际: $(grep count= "$state")"
   grep -q "current=screenshot.png" "$state" || fail "$label: 首个文件应为 screenshot.png，实际: $(grep current= "$state")"
   echo "  ✅ $label: $(grep -h '^count=\|^current=' "$state" | tr '\n' ' ')"
 }

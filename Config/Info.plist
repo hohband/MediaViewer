@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist 只放「系统注册」相关的键，其余键（CFBundleIdentifier、版本号、
+  部署目标等）仍由 Xcode 的 GENERATE_INFOPLIST_FILE + INFOPLIST_KEY_* 自动生成，
+  两边会在构建时合并。见 MediaViewer.xcodeproj 里的 INFOPLIST_FILE。
+
+  CFBundleDocumentTypes 决定 Finder 把哪些文件交给 MediaViewer：
+    · 右键 →「打开方式」里会出现 MediaViewer
+    · 「显示简介 → 打开方式」里可以把它设成默认程序
+    · 双击 / open -a / 拖到 Dock 图标都会以「用 MediaViewer 打开」事件送到 App
+  这里列的类型必须和 MediaViewer/Models/MediaItem.swift 的 MediaFormats 保持一致，
+  否则会出现「菜单里有 MediaViewer，打开却说格式不支持」。
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Image</string>
+			<!-- Viewer：只能看、不改文件，所以不会跟「预览」「照片」抢默认位置。 -->
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<!-- Alternate：作为备选出现在「打开方式」里，但不抢默认程序。 -->
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.jpeg</string>
+				<string>public.png</string>
+				<string>com.compuserve.gif</string>
+				<string>public.heic</string>
+				<string>public.heif</string>
+				<string>public.tiff</string>
+				<string>com.microsoft.bmp</string>
+				<string>org.webmproject.webp</string>
+				<string>public.avif</string>
+				<string>public.jpeg-2000</string>
+				<string>com.adobe.raw-image</string>
+				<string>com.canon.cr2-raw-image</string>
+				<string>com.canon.cr3-raw-image</string>
+				<string>com.nikon.raw-image</string>
+				<string>com.sony.arw-raw-image</string>
+				<string>com.olympus.raw-image</string>
+				<string>com.fuji.raw-image</string>
+				<string>com.panasonic.rw2-raw-image</string>
+				<string>com.samsung.raw-image</string>
+				<string>com.pentax.raw-image</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Movie</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.quicktime-movie</string>
+				<string>public.mpeg-4</string>
+				<string>com.apple.m4v-video</string>
+				<string>public.avi</string>
+				<string>public.mpeg</string>
+				<string>public.mpeg-2-video</string>
+				<string>public.mpeg-2-transport-stream</string>
+				<string>public.avchd-mpeg-2-transport-stream</string>
+				<string>public.3gpp</string>
+				<string>public.3gpp2</string>
+				<string>public.dv-movie</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

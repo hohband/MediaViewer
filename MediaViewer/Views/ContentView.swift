@@ -18,10 +18,13 @@ struct ContentView: View {
                 MetadataInspectorView(item: library.currentItem, sections: sections, state: loadState)
                     .inspectorColumnWidth(min: 280, ideal: 340, max: 520)
             }
-            .task { openFolderFromCommandLineIfNeeded() }
+            .task { openInitialPaths() }
             .task(id: library.currentItem?.url) { await loadMetadata() }
             .onOpenURL { url in
-                library.loadIfDirectory(url)
+                library.open(url)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: OpenRequests.didChange)) { _ in
+                openPendingRequests()
             }
     }
 
@@ -93,11 +96,23 @@ struct ContentView: View {
         }
     }
 
-    /// 支持从命令行传入文件夹：`MediaViewer.app/Contents/MacOS/MediaViewer <文件夹>`。
-    private func openFolderFromCommandLineIfNeeded() {
+    /// 启动时决定看什么：先命令行参数（`MediaViewer.app/Contents/MacOS/MediaViewer <路径>`），
+    /// 再 Finder / LaunchServices 送来的「打开方式」请求。
+    private func openInitialPaths() {
         guard library.folderURL == nil else { return }
+
         for argument in CommandLine.arguments.dropFirst() where !argument.hasPrefix("-") {
-            if library.loadIfDirectory(URL(fileURLWithPath: argument)) { return }
+            if library.open(URL(fileURLWithPath: argument)) { return }
+        }
+
+        openPendingRequests()
+    }
+
+    /// 处理 Finder 双击 / 右键「打开方式」/ 拖到 Dock 图标打开的文件。
+    /// 多选时按顺序打开，最后停在最后一个文件上。
+    private func openPendingRequests() {
+        for url in OpenRequests.drain() {
+            library.open(url)
         }
     }
 
