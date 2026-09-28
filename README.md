@@ -88,6 +88,33 @@ NOTARY_PROFILE="notary" \
 - 不用 `hdiutil create -srcfolder`：它内部要先挂载一个临时镜像，在沙箱 / CI 这类受限环境里会以 `目录非空` 失败。改成 `makehybrid`（直接构建 HFS+ 文件系统，不挂载）→ 在可写镜像里清掉 `makehybrid` 附带的 `com.apple.FinderInfo`（不清的话 `codesign --strict` 会报 `resource fork, Finder information, or similar detritus not allowed`）→ 压成只读 UDZO。
 - `pkgutil --expand-full` 的目标目录必须不存在，否则直接失败。
 
+## 应用图标
+
+![图标设计](docs/icon-preview.png)
+
+图标是**代码画出来的**（`Tools/IconGen/make_icon.py`，Pillow + numpy），仓库里没有二进制设计稿：
+蓝色渐变底 + 扇形展开的三张照片（最前面那张有远山、近山和太阳）+ 右下角播放角标，
+一个符号里同时有「一堆可以翻看的照片」和「能播放的视频」。
+
+```bash
+python3 Tools/IconGen/make_icon.py                        # 重新生成 docs/icon-preview.png
+python3 Tools/IconGen/make_icon.py --install              # 同时写入 AppIcon.appiconset
+python3 Tools/IconGen/make_icon.py --variant a --install  # 换变体（A/B/C，见预览图）
+```
+
+三个变体（**当前装的是 B**）：**A** 单张照片 + 角标，元素最少、最小尺寸下最直接；
+**B** 多张堆叠 + 角标，强调「同一个文件夹里前后翻看」（前面那张小一点，给扇形的两张让位）；
+**C** 播放角标压在照片正中，强调视频。
+`--install` 会一次写出 10 档 PNG（16 / 32 / 64 / 128 / 256 / 512 / 1024，含 @2x）并同步 `Contents.json`。
+
+几何与取舍：
+
+- 主体占画布 **94%**（四周留 3%），圆角半径取主体边长的 **22.37%**，用超椭圆（指数 5）近似 Apple 的连续圆角。
+  留白比 Xcode 模板的 10% 小，是因为 macOS 26 会把超出规格的图标缩小后塞进圆角灰底
+  （[Tahoe 的图标形状处理](https://www.heise.de/en/news/Icons-in-macOS-26-Fighting-the-Squircle-Prison-11075561.html)），
+  按 80% 画会被再收一次；94% 在 macOS 14/15 上只是略饱满一点，在 26 上不会被缩。
+- 降采样按**预乘 alpha 做面积平均**（`RENDER=3072` 是各档的公倍数，除得尽），否则透明区的黑色会被插值进边缘，16px 上是一圈暗边。
+
 ## 快捷键
 
 | 操作 | 快捷键 |
@@ -121,12 +148,14 @@ MediaViewer/
     MetadataModels.swift        元数据分组模型
     MediaViewerDiagnostics.swift --dump-state 诊断入口
   Views/                        预览区、缩放图片、视频播放器、元数据面板、空状态
-  Assets.xcassets
+  Assets.xcassets               应用图标（AppIcon.appiconset 由脚本生成）
 Tools/
+  IconGen/                      图标生成脚本：图标即代码（Pillow + numpy）
   MetadataProbe/                命令行探针：跑同一份扫描/元数据实现
   WindowProbe/                  窗口信息与截图像素统计（UI 冒烟用）
 scripts/                        构建、运行、打包、验证脚本
 docs/screenshot.png             README 截图
+docs/icon-preview.png           图标预览：变体对比 + 尺寸阶梯 + 明暗背景
 ```
 
 ## 验证
