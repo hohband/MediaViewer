@@ -13,6 +13,12 @@ final class MediaLibrary: ObservableObject {
     @Published private(set) var currentIndex: Int?
     @Published private(set) var message: String?
 
+    /// 界面偏好：元数据面板 / 胶片栏 / 幻灯片放映。
+    /// 放在这里而不是 ContentView 的 @State 里，这样工具栏和菜单命令都能直接改。
+    @Published var showsInspector = true
+    @Published var showsFilmstrip = true
+    @Published var isSlideshow = false
+
     var currentItem: MediaItem? {
         guard let currentIndex, items.indices.contains(currentIndex) else { return nil }
         return items[currentIndex]
@@ -107,6 +113,24 @@ final class MediaLibrary: ObservableObject {
     func goToNext() {
         guard let currentIndex, currentIndex + 1 < items.count else { return }
         self.currentIndex = currentIndex + 1
+    }
+
+    /// 跳到指定位置（给胶片栏点击用）。
+    func select(index: Int) {
+        guard items.indices.contains(index) else { return }
+        if currentIndex != index {
+            currentIndex = index
+        }
+    }
+
+    /// 幻灯片放映用的步进：到末尾后回到开头，方便循环播放。
+    func advanceForSlideshow() {
+        guard !items.isEmpty else { return }
+        guard let currentIndex else {
+            self.currentIndex = 0
+            return
+        }
+        self.currentIndex = (currentIndex + 1) % items.count
     }
 
     /// 弹出系统打开面板：可以选文件夹，也可以直接选一个或多个媒体文件。

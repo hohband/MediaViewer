@@ -15,16 +15,28 @@ struct VideoStageView: View {
 
             if let player {
                 PlayerView(player: player)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: .black.opacity(0.5), radius: 28, y: 10)
+                    .padding(1)
             } else if let failureMessage {
                 ContentUnavailableView(
                     "无法播放视频",
                     systemImage: "exclamationmark.triangle",
                     description: Text(failureMessage)
                 )
-                .background(.regularMaterial)
+                .padding(28)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding()
             } else {
-                ProgressView()
-                    .controlSize(.large)
+                VStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("正在准备视频…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(28)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -20,14 +20,9 @@ struct ZoomableImageView: View {
                 if let image {
                     imageContent(image: image, viewport: proxy.size)
                 } else if let failureMessage {
-                    ContentUnavailableView(
-                        "无法显示图片",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(failureMessage)
-                    )
+                    failureCard(message: failureMessage)
                 } else {
-                    ProgressView()
-                        .controlSize(.large)
+                    loadingCard
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -39,6 +34,7 @@ struct ZoomableImageView: View {
 
     private func imageContent(image: NSImage, viewport: CGSize) -> some View {
         let fitted = fittedSize(for: image, in: viewport)
+        let isFitted = abs(scale - 1) < 0.01
 
         return ScrollView([.horizontal, .vertical]) {
             Image(nsImage: image)
@@ -47,6 +43,10 @@ struct ZoomableImageView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: fitted.width * scale, height: fitted.height * scale)
                 .frame(minWidth: viewport.width, minHeight: viewport.height)
+                // 适应窗口时给图片加圆角 + 投影，像画框一样浮在暗色舞台上；
+                // 放大后去掉装饰，方便检查像素。
+                .clipShape(RoundedRectangle(cornerRadius: isFitted ? 8 : 0, style: .continuous))
+                .shadow(color: .black.opacity(isFitted ? 0.5 : 0), radius: 28, y: 10)
         }
         .scrollIndicators(scale > 1.001 ? .automatic : .hidden)
         .gesture(
@@ -65,49 +65,94 @@ struct ZoomableImageView: View {
                 setScale(1)
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .bottom) {
             controls(for: image, viewport: viewport)
         }
     }
 
+    /// 底部悬浮缩放条：缩小 / 滑杆 / 放大 / 百分比 / 适应窗口 / 100%。
     private func controls(for image: NSImage, viewport: CGSize) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button {
                 setScale(scale / zoomStep)
             } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
-            .help("缩小")
+            .help("缩小（−）")
+            .keyboardShortcut("-", modifiers: [])
 
-            Text("\(Int(displayedPercent(for: image, viewport: viewport).rounded()))%")
-                .font(.caption)
-                .monospacedDigit()
-                .frame(minWidth: 44)
+            Slider(value: logScaleBinding, in: 0 ... 1)
+                .frame(width: 110)
+                .help("拖动缩放")
 
             Button {
                 setScale(scale * zoomStep)
             } label: {
                 Image(systemName: "plus.magnifyingglass")
             }
-            .help("放大")
+            .help("放大（+）")
+            .keyboardShortcut("=", modifiers: [])
+
+            Text("\(Int(displayedPercent(for: image, viewport: viewport).rounded()))%")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 46)
+                .help("相对原始像素的显示比例，双击图片可在适应窗口和 100% 间切换")
 
             Divider().frame(height: 14)
 
             Button("适应窗口") {
                 setScale(1)
             }
-            .help("缩放到适合窗口（双击图片也可以）")
+            .help("缩放到适合窗口（0）")
+            .keyboardShortcut("0", modifiers: [])
 
             Button("100%") {
                 setScale(actualSizeScale(for: image, viewport: viewport))
             }
-            .help("按原始像素显示")
+            .help("按原始像素显示（1）")
+            .keyboardShortcut("1", modifiers: [])
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .background(.regularMaterial, in: Capsule())
-        .padding(12)
+        .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+        .padding(.bottom, 14)
+    }
+
+    /// 滑杆用对数刻度：小比例微调不跳变，大比例也能一把拉到。
+    private var logScaleBinding: Binding<Double> {
+        let minLog = log(minimumScale)
+        let maxLog = log(maximumScale)
+        return Binding(
+            get: { (log(max(scale, minimumScale)) - minLog) / (maxLog - minLog) },
+            set: { setScale(exp(minLog + $0 * (maxLog - minLog))) }
+        )
+    }
+
+    private var loadingCard: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.large)
+            Text("正在载入图片…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding(28)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func failureCard(message: String) -> some View {
+        ContentUnavailableView(
+            "无法显示图片",
+            systemImage: "exclamationmark.triangle",
+            description: Text(message)
+        )
+        .padding(28)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding()
     }
 
     // MARK: - 缩放计算
