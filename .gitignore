@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
