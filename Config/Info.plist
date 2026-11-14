@@ -69,7 +69,30 @@
 				<string>public.3gpp</string>
 				<string>public.3gpp2</string>
 				<string>public.dv-movie</string>
+				<string>org.matroska.mkv</string>
+				<string>com.microsoft.windows-media-wmv</string>
+				<string>org.smpte.mxf</string>
 			</array>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.matroska.mkv</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.movie</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mkv</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>video/x-matroska</string>
+			</dict>
 		</dict>
 	</array>
 </dict>

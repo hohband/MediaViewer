@@ -162,9 +162,11 @@ python3 Tools/IconGen/make_icon.py --variant a --install  # 换变体（A/B/C，
 ## 支持的格式
 
 - 图片：`jpg` `jpeg` `png` `gif` `heic` `heif` `tif` `tiff` `bmp` `webp` `avif` `jp2`，以及常见 RAW（`dng` `cr2` `cr3` `nef` `arw` `orf` `raf` `rw2` `srw` `pef`）。
-- 视频：`mov` `qt` `mp4` `m4v` `avi` `mpg` `mpeg` `mpe` `m2v` `ts` `m2ts` `mts` `3gp` `3g2` `dv`。
+- 视频：`mov` `qt` `mp4` `m4v` `avi` `mpg` `mpeg` `mpe` `m2v` `ts` `m2ts` `mts` `3gp` `3g2` `dv` `mkv` `wmv` `mxf`。
 
-解码走系统能力（图片 ImageIO、视频 AVFoundation），所以能播的就是系统能播的；遇到系统不支持的容器或编码，播放器会给出明确提示而不是静默黑屏。要增删格式，改 [MediaItem.swift](MediaViewer/Models/MediaItem.swift) 里的两个扩展名集合即可；同时记得同步 [Config/Info.plist](Config/Info.plist) 里给 Finder 用的 UTI 列表（见上文「在 Finder 里打开」）。
+图片解码走 ImageIO。视频优先使用 AVFoundation 原生播放；系统不支持容器或编码时，会用已安装的 **FFmpeg** 转成 H.264 / AAC MP4（超过 4K 的视频缩小到 4K），转换结果按原文件路径、大小和修改时间缓存到 `~/Library/Caches/MediaViewer/Compatible Videos`，不会修改原文件。首次打开长视频需要等待转换，切换文件会取消尚未完成的转换。
+
+FFmpeg 不随 App 捆绑；只有播放系统不兼容的视频时才需要它，可用 `brew install ffmpeg` 安装。找不到 FFmpeg 或转换失败时，播放器会显示具体原因。要增删格式，改 [MediaItem.swift](MediaViewer/Models/MediaItem.swift) 里的两个扩展名集合即可；同时记得同步 [Config/Info.plist](Config/Info.plist) 里给 Finder 用的 UTI 列表（见上文「在 Finder 里打开」）。
 
 ## 目录结构
 
@@ -182,6 +184,7 @@ MediaViewer/
     MetadataModels.swift        元数据分组模型
     OpenRequests.swift          Finder「打开方式」请求的队列
     MediaViewerDiagnostics.swift --dump-state 诊断入口
+    VideoCompatibilityService.swift FFmpeg 后备转换与缓存
   Views/                        预览区、缩放图片、视频播放器、元数据面板、空状态
   Assets.xcassets               应用图标（AppIcon.appiconset 由脚本生成）
 Tools/

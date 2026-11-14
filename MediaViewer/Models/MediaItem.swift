@@ -22,8 +22,8 @@ enum MediaKind: String, Hashable, Sendable {
 
 /// 支持的文件扩展名。
 ///
-/// 只列出当前解码链路（图片用 ImageIO，视频用 AVFoundation）确实能处理的格式，
-/// 避免把无法预览的文件混进导航列表。要扩展格式，改这两个集合即可。
+/// 只列出图片或视频解码链路能处理的格式，避免把无法预览的文件混进导航列表。
+/// 视频优先使用 AVFoundation，系统不支持时通过 FFmpeg 转成兼容格式。
 enum MediaFormats {
     static let imageExtensions: Set<String> = [
         "jpg", "jpeg", "jpe", "png", "gif", "heic", "heif", "tif", "tiff",
@@ -33,7 +33,7 @@ enum MediaFormats {
 
     static let videoExtensions: Set<String> = [
         "mov", "qt", "mp4", "m4v", "avi", "mpg", "mpeg", "mpe", "m2v",
-        "ts", "m2ts", "mts", "3gp", "3g2", "dv",
+        "ts", "m2ts", "mts", "3gp", "3g2", "dv", "mkv", "wmv", "mxf",
     ]
 
     static func kind(forFileExtension fileExtension: String) -> MediaKind? {
