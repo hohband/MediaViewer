@@ -12,8 +12,7 @@ struct ContentView: View {
     var body: some View {
         content
             .frame(minWidth: 920, minHeight: 600)
-            .navigationTitle(library.currentItem?.fileName ?? "MediaViewer")
-            .navigationSubtitle(subtitle)
+            .background(WindowTitleUpdater(title: library.currentItem?.fileName ?? "MediaViewer"))
             .toolbar { toolbarItems }
             .inspector(isPresented: inspectorBinding) {
                 MetadataInspectorView(item: library.currentItem, sections: sections, state: loadState)
@@ -78,85 +77,122 @@ struct ContentView: View {
         }
     }
 
-    private var subtitle: String {
-        // 计数只在工具栏胶囊里出现一次，副标题只留文件夹名，标题区不再拥挤。
-        guard let folderURL = library.folderURL else { return "" }
-        return folderURL.lastPathComponent
-    }
-
     // MARK: - 工具栏
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            // 和预览区悬浮箭头同款的独立圆钮：去掉外框胶囊，不再局促。
-            HStack(spacing: 8) {
-                navButton(
-                    systemImage: "chevron.left",
-                    tip: "上一个（←）",
-                    disabled: !library.canGoPrevious
-                ) {
-                    library.goToPrevious()
-                }
+        ToolbarItem(placement: .navigation) {
+            HStack(spacing: 14) {
+                HStack(spacing: 0) {
+                    navButton(
+                        systemImage: "chevron.left",
+                        tip: "上一个（←）",
+                        disabled: !library.canGoPrevious
+                    ) {
+                        library.goToPrevious()
+                    }
 
-                navButton(
-                    systemImage: "chevron.right",
-                    tip: "下一个（→ / 空格）",
-                    disabled: !library.canGoNext
-                ) {
-                    library.goToNext()
+                    Divider()
+                        .frame(height: 14)
+
+                    Text(library.positionText)
+                        .font(.system(size: 12, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 48)
+
+                    Divider()
+                        .frame(height: 14)
+
+                    navButton(
+                        systemImage: "chevron.right",
+                        tip: "下一个（→ / 空格）",
+                        disabled: !library.canGoNext
+                    ) {
+                        library.goToNext()
+                    }
                 }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 3)
+                .frame(height: 32)
+
+                Divider()
+                    .frame(height: 22)
+
+                fileSummary
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                ToolbarPanelConfigurator()
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+            }
+        }
 
-            Text(library.positionText)
-                .font(.callout)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+        ToolbarItem(placement: .principal) {
+            Spacer()
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                library.presentOpenPanel()
-            } label: {
-                Label("打开", systemImage: "folder")
-            }
-            .quickTip("打开文件夹或文件（⌘O）")
+            HStack(spacing: 4) {
+                Button {
+                    library.presentOpenPanel()
+                } label: {
+                    Label("打开", systemImage: "folder")
+                }
+                .quickTip("打开文件夹或文件（⌘O）")
 
-            Button {
-                library.reload()
-            } label: {
-                Label("重新载入", systemImage: "arrow.clockwise")
-            }
-            .disabled(library.folderURL == nil)
-            .quickTip("重新载入文件夹（⌘R）")
+                Button {
+                    library.reload()
+                } label: {
+                    Label("重新载入", systemImage: "arrow.clockwise")
+                }
+                .disabled(library.folderURL == nil)
+                .quickTip("重新载入文件夹（⌘R）")
 
-            Button {
-                library.showsFilmstrip.toggle()
-            } label: {
-                Label(
-                    "胶片栏",
-                    systemImage: library.showsFilmstrip ? "film.stack.fill" : "film.stack"
-                )
-            }
-            .quickTip("显示或隐藏胶片栏（⇧⌘F）")
+                Button {
+                    library.showsFilmstrip.toggle()
+                } label: {
+                    Label(
+                        "胶片栏",
+                        systemImage: library.showsFilmstrip ? "film.stack.fill" : "film.stack"
+                    )
+                }
+                .quickTip("显示或隐藏胶片栏（⇧⌘F）")
 
-            Button {
-                library.isSlideshow.toggle()
-            } label: {
-                Label(
-                    library.isSlideshow ? "停止放映" : "幻灯片",
-                    systemImage: library.isSlideshow ? "pause.circle.fill" : "play.circle"
-                )
-            }
-            .tint(library.isSlideshow ? .accentColor : nil)
-            .quickTip(library.isSlideshow ? "停止幻灯片放映（⇧⌘P）" : "开始幻灯片放映（⇧⌘P）")
+                Button {
+                    library.isSlideshow.toggle()
+                } label: {
+                    Label(
+                        library.isSlideshow ? "停止放映" : "幻灯片",
+                        systemImage: library.isSlideshow ? "pause.circle.fill" : "play.circle"
+                    )
+                }
+                .tint(library.isSlideshow ? .accentColor : nil)
+                .quickTip(library.isSlideshow ? "停止幻灯片放映（⇧⌘P）" : "开始幻灯片放映（⇧⌘P）")
 
-            Toggle(isOn: inspectorBinding) {
-                Label("元数据", systemImage: "info.circle")
+                Toggle(isOn: inspectorBinding) {
+                    Label("元数据", systemImage: "info.circle")
+                }
+                .quickTip("显示或隐藏元数据面板（⌘I）")
             }
-            .quickTip("显示或隐藏元数据面板（⌘I）")
+            .labelStyle(.iconOnly)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background {
+                ToolbarPanelConfigurator()
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+            }
         }
     }
 
@@ -167,8 +203,40 @@ struct ContentView: View {
         )
     }
 
-    /// 工具栏里的圆形翻页钮：玻璃圆底，和预览区悬浮箭头呼应。
-    /// 禁用时变灰（plain 样式不会自动变灰，所以手动处理）。
+    private var fileSummary: some View {
+        HStack(spacing: 9) {
+            if let item = library.currentItem {
+                let tint = item.kind == .video ? Color.purple : Color.blue
+
+                Image(systemName: item.kind.systemImageName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.fileName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if let folderURL = library.folderURL {
+                        Text(folderURL.lastPathComponent)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            } else {
+                Label("MediaViewer", systemImage: "photo.on.rectangle.angled")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+        }
+        .frame(maxWidth: 240, alignment: .leading)
+    }
+
+    /// 分段翻页控件里的按钮；禁用时手动减弱，保持与计数区的层级一致。
     private func navButton(
         systemImage: String,
         tip: String,
@@ -177,12 +245,11 @@ struct ContentView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(disabled ? .tertiary : .primary)
-                .frame(width: 30, height: 30)
-                .background(.quaternary, in: Circle())
+                .frame(width: 32, height: 26)
                 .opacity(disabled ? 0.45 : 1)
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
         .disabled(disabled)
         .quickTip(tip)
@@ -259,6 +326,42 @@ struct ContentView: View {
 
         sections = loaded
         loadState = loaded.isEmpty ? .failed("没有可显示的元数据。") : .loaded
+    }
+}
+
+private struct ToolbarPanelConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        NSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            var current = nsView.superview
+            while let view = current {
+                if NSStringFromClass(type(of: view)) == "NSToolbarView" {
+                    for subview in view.subviews where NSStringFromClass(type(of: subview)) == "NSGlassContainerView" {
+                        subview.isHidden = true
+                    }
+                    break
+                }
+                current = view.superview
+            }
+        }
+    }
+}
+
+private struct WindowTitleUpdater: NSViewRepresentable {
+    let title: String
+
+    func makeNSView(context: Context) -> NSView {
+        NSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.title = title
+            nsView.window?.titleVisibility = .hidden
+        }
     }
 }
 
